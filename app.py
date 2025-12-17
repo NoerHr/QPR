@@ -96,7 +96,7 @@ with st.sidebar:
     st.header("🧠 Pengaturan AI")
     api_key = st.text_input(
         "Google Gemini API Key:", 
-        value="AIzaSyD2uwPdGO2Y8bfd64cbWiNiffJ_2Imy9kC", 
+        value="AIzaSyD2uwPdGO2Y8bfd64cbWiNiffJ_2Imy9kc", 
         type="password"
     )
     
@@ -122,27 +122,36 @@ st.markdown("""
 
 # --- FUNGSI AI YANG AMAN (ANTI ERROR 404) ---
 def generate_content_safe(prompt, audio_bytes=None):
-    # Selalu gunakan versi 1.5
-    model_name = 'gemini-1.5-flash' 
+    # TAHAP 1: Pastikan API Key tersedia
+    # Menggunakan api_key global dari sidebar
+    clean_key = api_key.strip() if api_key else None
+    
+    if not clean_key:
+        return "⚠️ API Key kosong. Masukkan key di sidebar dan tekan Enter."
     
     try:
+        # TAHAP 2: Konfigurasi ulang setiap kali fungsi dipanggil
+        genai.configure(api_key=clean_key)
+        
+        model_name = 'gemini-1.5-flash' 
         model = genai.GenerativeModel(model_name)
         
-        # KASUS 1: ADA AUDIO
+        # TAHAP 3: Kirim Konten
         if audio_bytes:
             response = model.generate_content([
                 prompt, 
                 {"mime_type": "audio/webm", "data": audio_bytes}
             ])
-        # KASUS 2: HANYA TEKS
         else:
             response = model.generate_content(prompt)
             
         return response.text
 
     except Exception as e:
-        # Jika terjadi error 404 atau lainnya, berikan pesan yang jelas
-        return f"⚠️ Terjadi kesalahan pada layanan AI: {str(e)}"
+        err_str = str(e)
+        if "API_KEY_INVALID" in err_str:
+            return "❌ API Key SALAH. Silakan ambil key baru dari Google AI Studio."
+        return f"⚠️ Kesalahan AI: {err_str}"
 
 # --- NAVIGATION TABS ---
 tab_anggota, tab_leader = st.tabs(["👥 Evaluasi Anggota (Excel)", "🎙️ Evaluasi Ketua & Wakil (Mode Diskusi)"])
