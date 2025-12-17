@@ -2,12 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import re
-import google.generativeai as genai
-from streamlit_mic_recorder import mic_recorder
-import json
+import random
 
 # --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Laporan QPR 360°", layout="wide", page_icon="🎙️")
+st.set_page_config(page_title="Laporan QPR", layout="wide", page_icon="📝")
 
 st.markdown("""
 <style>
@@ -41,378 +39,378 @@ st.markdown("""
         box-shadow: 0 10px 20px -5px rgba(124, 58, 237, 0.3);
     }
     .header-box h1 { margin: 0; font-weight: 800; font-size: 2.2rem; color: white !important; }
-    
+
     /* SCORE WIDGET */
-    .score-container { text-align: center; padding: 20px; border-bottom: 2px dashed #f3f4f6; margin-bottom: 20px; }
+    .score-container {
+        text-align: center;
+        padding: 20px;
+        border-bottom: 2px dashed #f3f4f6;
+        margin-bottom: 20px;
+    }
     .score-val { font-size: 4rem; font-weight: 800; color: #6d28d9; line-height: 1; }
     .score-label { font-size: 0.85rem; font-weight: 700; color: #4b5563; text-transform: uppercase; margin-top: 10px; letter-spacing: 1.5px; }
 
-    /* NARRATIVE BOX */
-    .narrative-box {
-        background-color: #fdf4ff;
-        border-left: 6px solid #d946ef;
-        padding: 30px;
+    /* EXECUTIVE SUMMARY BOX (NEW) */
+    .exec-summary {
+        background-color: #f5f3ff;
+        border-left: 6px solid #7c3aed;
+        padding: 25px;
         border-radius: 12px;
-        margin-top: 20px;
         margin-bottom: 25px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
     }
-    .narrative-title {
-        color: #86198f;
+    .exec-title {
+        color: #5b21b6;
         font-weight: 800;
         text-transform: uppercase;
-        margin-bottom: 15px;
-        font-size: 1.1rem;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        font-size: 0.95rem;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
     }
-    .narrative-text {
-        color: #1f2937;
-        line-height: 2; 
+    .exec-text {
+        color: #374151;
+        line-height: 1.8;
         text-align: justify;
-        font-size: 1.05rem;
+        font-size: 1rem;
     }
 
     /* TABLE STYLE */
-    .styled-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.95rem; border-radius: 10px; overflow: hidden; }
-    .styled-table th { background-color: #5b21b6; color: #ffffff; font-weight: 600; padding: 14px 16px; text-align: left; }
-    .styled-table td { padding: 16px; border-bottom: 1px solid #f3f4f6; vertical-align: top; color: #374151; line-height: 1.6; word-wrap: break-word; }
-    .col-catatan { width: 50%; text-align: justify; }
-    .styled-table tbody tr:hover { background-color: #f9fafb; }
-    
-    /* AUDIO RECORDER STYLE */
-    .audio-recorder-st {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 10px;
+    .styled-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 0.9rem;
+        border-radius: 10px;
+        overflow: hidden;
     }
+    .styled-table th {
+        background-color: #5b21b6;
+        color: #ffffff;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        padding: 14px 16px;
+        text-align: left;
+    }
+    .styled-table td {
+        padding: 16px;
+        border-bottom: 1px solid #f3f4f6;
+        vertical-align: top;
+        color: #374151;
+        line-height: 1.6;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+    .col-komponen { width: 25%; font-weight: 700; color: #111827; }
+    .col-bobot { width: 10%; text-align: center; color: #6b7280; }
+    .col-skor { width: 10%; text-align: center; font-weight: 800; color: #7c3aed; font-size: 1.05rem; }
+    .col-catatan { width: 40%; text-align: justify; color: #1f2937; line-height: 1.6; }
+    .col-sumber { width: 15%; color: #9ca3af; font-size: 0.8rem; font-style: italic; }
+    
+    .styled-table tbody tr:hover { background-color: #f9fafb; }
+    .total-row td {
+        background-color: #f5f3ff;
+        font-weight: 800;
+        color: #5b21b6;
+        border-top: 2px solid #ddd6fe;
+        font-size: 1rem;
+    }
+
+    /* FOOTER */
+    .ttd-box { text-align: center; margin-top: 20px; }
+    .ttd-role { font-size: 0.85rem; color: #6b7280; font-weight: 600; margin-bottom: 60px; text-transform: uppercase; }
+    .ttd-name { font-size: 1rem; color: #111827; font-weight: 700; border-top: 2px solid #d1d5db; display: inline-block; padding-top: 10px; min-width: 180px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- SIDEBAR: AI CONFIG ---
-with st.sidebar:
-    st.header("🧠 Pengaturan AI")
-    api_key = st.text_input(
-        "Google Gemini API Key:", 
-        value="AIzaSyD2uwPdGO2Y8bfd64cbWiNiffJ_2Imy9kc", 
-        type="password"
-    )
-    
-    if api_key:
-        try:
-            genai.configure(api_key=api_key)
-            st.success("✅ AI Terhubung!")
-        except Exception as e:
-            st.error(f"Koneksi AI Gagal: {e}")
-    else:
-        st.warning("Masukkan API Key.")
-    
-    st.markdown("---")
-    st.info("Fitur Voice Note aktif. Jika transkripsi gagal, silakan ketik manual.")
-
-# --- TITLE ---
+# --- HEADER TITLE ---
 st.markdown("""
 <div class="header-box">
-    <h1>QPR Report Dashboard 360°</h1>
+    <h1>QPR Report Dashboard</h1>
     <p>Performance Evaluation System • Internal Organization Development</p>
 </div>
 """, unsafe_allow_html=True)
 
-# --- FUNGSI AI YANG AMAN (ANTI ERROR 404) ---
-def generate_content_safe(prompt, audio_bytes=None):
-    # TAHAP 1: Pastikan API Key tersedia
-    # Menggunakan api_key global dari sidebar
-    clean_key = api_key.strip() if api_key else None
-    
-    if not clean_key:
-        return "⚠️ API Key kosong. Masukkan key di sidebar dan tekan Enter."
-    
+# --- UPLOAD SECTION ---
+uploaded_file = st.file_uploader("Upload File Excel QPR II (.xlsx)", type=['xlsx'])
+
+if uploaded_file is not None:
     try:
-        # TAHAP 2: Konfigurasi ulang setiap kali fungsi dipanggil
-        genai.configure(api_key=clean_key)
-        
-        model_name = 'gemini-1.5-flash' 
-        model = genai.GenerativeModel(model_name)
-        
-        # TAHAP 3: Kirim Konten
-        if audio_bytes:
-            response = model.generate_content([
-                prompt, 
-                {"mime_type": "audio/webm", "data": audio_bytes}
-            ])
-        else:
-            response = model.generate_content(prompt)
+        # --- 1. AMBIL LIST NAMA ---
+        df_recap_names = pd.read_excel(uploaded_file, sheet_name="Recap Point Penilaian", header=1)
+        member_list = df_recap_names['Nama Anggota'].dropna().unique()
+
+        # --- FUNGSI PROSES DATA ---
+        @st.cache_data
+        def process_member_data(file_input, member_name):
+            sheets = ["Head of Division", "Deputy Head of Division"]
             
-        return response.text
+            results = {
+                "Kinerja": {"scores": [], "comments": []},
+                "Inisiatif": {"scores": [], "comments": []},
+                "Kolaborasi": {"scores": [], "comments": []},
+                "Partisipasi": {"scores": [], "comments": []},
+                "Waktu": {"scores": [], "comments": []}
+            }
 
-    except Exception as e:
-        err_str = str(e)
-        if "API_KEY_INVALID" in err_str:
-            return "❌ API Key SALAH. Silakan ambil key baru dari Google AI Studio."
-        return f"⚠️ Kesalahan AI: {err_str}"
+            for sheet in sheets:
+                try:
+                    df_raw = pd.read_excel(file_input, sheet_name=sheet, header=None)
+                    
+                    for keyword in results.keys():
+                        matches = df_raw.index[df_raw.apply(lambda r: r.astype(str).str.contains(keyword, case=False, na=False).any(), axis=1)].tolist()
+                        if not matches: continue
+                        start_row = matches[0]
+                        df_sliced = df_raw.iloc[start_row:]
+                        head_matches = df_sliced.index[df_sliced.apply(lambda r: r.astype(str).str.contains("Nama Anggota", case=False, na=False).any(), axis=1)].tolist()
+                        if not head_matches: continue
+                        header_idx = head_matches[0]
+                        header_row = df_raw.iloc[header_idx] 
 
-# --- NAVIGATION TABS ---
-tab_anggota, tab_leader = st.tabs(["👥 Evaluasi Anggota (Excel)", "🎙️ Evaluasi Ketua & Wakil (Mode Diskusi)"])
-
-# =================================================================================================
-# TAB 1: EVALUASI ANGGOTA (EXCEL)
-# =================================================================================================
-with tab_anggota:
-    uploaded_file = st.file_uploader("Upload File Excel QPR II (.xlsx)", type=['xlsx'], key="excel_uploader")
-
-    if uploaded_file is not None:
-        try:
-            df_recap_names = pd.read_excel(uploaded_file, sheet_name="Recap Point Penilaian", header=1)
-            member_list = df_recap_names['Nama Anggota'].dropna().unique()
-
-            @st.cache_data
-            def process_member_data(file_input, member_name):
-                sheets = ["Head of Division", "Deputy Head of Division"]
-                results = {
-                    "Kinerja": {"scores": [], "comments": []},
-                    "Inisiatif": {"scores": [], "comments": []},
-                    "Kolaborasi": {"scores": [], "comments": []},
-                    "Partisipasi": {"scores": [], "comments": []},
-                    "Waktu": {"scores": [], "comments": []}
-                }
-                for sheet in sheets:
-                    try:
-                        df_raw = pd.read_excel(file_input, sheet_name=sheet, header=None)
-                        for keyword in results.keys():
-                            matches = df_raw.index[df_raw.apply(lambda r: r.astype(str).str.contains(keyword, case=False, na=False).any(), axis=1)].tolist()
-                            if not matches: continue
-                            start_row = matches[0]
-                            df_sliced = df_raw.iloc[start_row:]
-                            head_matches = df_sliced.index[df_sliced.apply(lambda r: r.astype(str).str.contains("Nama Anggota", case=False, na=False).any(), axis=1)].tolist()
-                            if not head_matches: continue
-                            header_idx = head_matches[0]
-                            header_row = df_raw.iloc[header_idx] 
-
-                            total_sk_idx = -1
-                            for idx, val in header_row.items():
-                                if isinstance(val, str) and "Total SK" in val:
-                                    total_sk_idx = idx
-                                    break
+                        total_sk_idx = -1
+                        for idx, val in header_row.items():
+                            if isinstance(val, str) and "Total SK" in val:
+                                total_sk_idx = idx
+                                break
+                        
+                        for i in range(1, 50):
+                            curr = header_idx + i
+                            if curr >= len(df_raw): break
+                            row = df_raw.iloc[curr]
                             
-                            for i in range(1, 50):
-                                curr = header_idx + i
-                                if curr >= len(df_raw): break
-                                row = df_raw.iloc[curr]
+                            if row.astype(str).str.contains(member_name, case=False, na=False).any():
+                                if total_sk_idx != -1:
+                                    try: results[keyword]["scores"].append(float(row[total_sk_idx]))
+                                    except: pass
                                 
-                                if row.astype(str).str.contains(member_name, case=False, na=False).any():
-                                    if total_sk_idx != -1:
-                                        try: results[keyword]["scores"].append(float(row[total_sk_idx]))
-                                        except: pass
-                                    for val in row:
-                                        if isinstance(val, str) and len(val) > 5:
-                                            clean = val.strip()
-                                            ignore = ["nan", "nil", "-", "0", member_name.lower()]
-                                            if clean.lower() not in ignore:
-                                                results[keyword]["comments"].append(clean)
-                                    break
-                    except: continue
-                return results
+                                for val in row:
+                                    if isinstance(val, str) and len(val) > 5:
+                                        clean = val.strip()
+                                        ignore = ["nan", "nil", "-", "0", member_name.lower()]
+                                        if clean.lower() not in ignore:
+                                            results[keyword]["comments"].append(clean)
+                                break
+                except: continue
+            return results
 
-            selected_member = st.selectbox("Pilih Anggota Tim:", member_list)
-            raw_data = process_member_data(uploaded_file, selected_member)
+        # --- 2. SIDEBAR FILTER ---
+        st.sidebar.markdown("### 🔍 Filter Anggota")
+        selected_member = st.sidebar.selectbox("Pilih Nama:", member_list)
+        st.sidebar.markdown("---")
 
-            def calc_avg(keyword):
-                scores = raw_data[keyword]["scores"]
-                if not scores: return 0
-                return sum(scores) / len(scores)
+        # --- 3. EKSEKUSI ---
+        raw_data = process_member_data(uploaded_file, selected_member)
 
-            s_kinerja = calc_avg("Kinerja")
-            s_inisiatif = calc_avg("Inisiatif")
-            s_kolab = calc_avg("Kolaborasi")
-            s_partisipasi = calc_avg("Partisipasi")
-            s_waktu = calc_avg("Waktu")
-            final_total = (s_kinerja * 0.30) + (s_inisiatif * 0.15) + (s_kolab * 0.20) + (s_partisipasi * 0.20) + (s_waktu * 0.15)
+        def calc_avg(keyword):
+            scores = raw_data[keyword]["scores"]
+            if not scores: return 0
+            return sum(scores) / len(scores)
 
-            def get_narrative_simple(keyword, score, context="detail"):
-                comments = []
-                if context == "detail":
-                    comments = raw_data[keyword]["comments"]
-                else:
-                    for k in raw_data:
-                        comments.extend(raw_data[k]["comments"])
-                
-                points_text = "\n".join([f"- {c}" for c in comments])
-                if context == "detail":
-                    prompt = f"Kamu HRD. Buat 1 paragraf evaluasi bahasa Indonesia baku untuk {selected_member}, aspek {keyword}, skor {score}. Poin: {points_text}"
-                else:
-                    prompt = f"Kamu HRD. Buat Executive Summary kinerja {selected_member}, total skor {score}. Rangkum kekuatan & kelemahan dari poin ini: {points_text}"
-                
-                return generate_content_safe(prompt)
+        s_kinerja = calc_avg("Kinerja")
+        s_inisiatif = calc_avg("Inisiatif")
+        s_kolab = calc_avg("Kolaborasi")
+        s_partisipasi = calc_avg("Partisipasi")
+        s_waktu = calc_avg("Waktu")
 
-            st.markdown(f"### 📄 Laporan Anggota: {selected_member}")
-            exec_sum = get_narrative_simple("All", final_total, "summary")
-            st.markdown(f'<div class="narrative-box"><div class="narrative-title">📋 Executive Summary</div><div class="narrative-text">{exec_sum}</div></div>', unsafe_allow_html=True)
+        final_total = (s_kinerja * 0.30) + (s_inisiatif * 0.15) + (s_kolab * 0.20) + (s_partisipasi * 0.20) + (s_waktu * 0.15)
+
+        # --- FUNGSI EXECUTIVE SUMMARY (RANGKUMAN KESELURUHAN) ---
+        def generate_overall_summary(score, all_data):
+            # 1. Kumpulkan SEMUA komentar unik
+            all_comments = []
+            for key in all_data:
+                for c in all_data[key]["comments"]:
+                    c = re.sub(r'^[\d\-\.\)\•\"]+\s*', '', str(c)).replace('"', '').strip()
+                    if c and len(c) > 5:
+                        # Kapitalisasi
+                        c = c[0].upper() + c[1:]
+                        if c[-1] not in ['.', '!', '?']: c += "."
+                        all_comments.append(c)
             
-            c1, c2 = st.columns([2, 1])
-            with c2:
-                st.markdown('<div class="css-card">', unsafe_allow_html=True)
-                st.markdown(f'<div class="score-container"><div class="score-val">{final_total:.2f}</div><div class="score-label">Total Score</div></div>', unsafe_allow_html=True)
-                fig = go.Figure(data=go.Scatterpolar(r=[s_kinerja, s_inisiatif, s_kolab, s_partisipasi, s_waktu], theta=['Kinerja', 'Inisiatif', 'Kolaborasi', 'Partisipasi', 'Waktu'], fill='toself', line_color='#7c3aed'))
-                fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), height=250, margin=dict(t=20, b=20, l=20, r=20))
-                st.plotly_chart(fig, use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+            # Hapus Duplikat
+            unique_comments = list(set(all_comments))
+
+            # 2. Tentukan Intro Berdasarkan Skor
+            if score >= 90:
+                intro = f"Secara keseluruhan, {selected_member} menunjukkan performa yang **sangat memuaskan** pada kuartal ini."
+                tone = "positif"
+            elif score >= 75:
+                intro = f"Secara keseluruhan, {selected_member} menunjukkan performa yang **cukup baik**, namun terdapat beberapa area yang memerlukan perhatian."
+                tone = "netral"
+            else:
+                intro = f"Secara keseluruhan, kinerja {selected_member} **memerlukan evaluasi mendalam** dikarenakan skor berada di bawah ekspektasi standar tim."
+                tone = "kritis"
+
+            # 3. Ambil 2-3 Poin Kunci secara Acak (Agar tidak terlalu panjang, tapi representatif)
+            # Logika: Jika ada komentar 'negatif' (kata kunci: kurang, jarang, terlambat), prioritaskan itu untuk feedback
+            priority_comments = []
+            normal_comments = []
             
-            with c1:
-                st.markdown('<div class="css-card">', unsafe_allow_html=True)
-                table_html = f"""
-                <table class="styled-table">
-                    <thead><tr><th>Komponen</th><th style='text-align:center'>Skor</th><th>Evaluasi</th></tr></thead>
-                    <tbody>
-                        <tr><td>Kinerja</td><td style='text-align:center; font-weight:bold'>{s_kinerja:.2f}</td><td>{get_narrative_simple("Kinerja", s_kinerja)}</td></tr>
-                        <tr><td>Inisiatif</td><td style='text-align:center; font-weight:bold'>{s_inisiatif:.2f}</td><td>{get_narrative_simple("Inisiatif", s_inisiatif)}</td></tr>
-                        <tr><td>Kolaborasi</td><td style='text-align:center; font-weight:bold'>{s_kolab:.2f}</td><td>{get_narrative_simple("Kolaborasi", s_kolab)}</td></tr>
-                        <tr><td>Partisipasi</td><td style='text-align:center; font-weight:bold'>{s_partisipasi:.2f}</td><td>{get_narrative_simple("Partisipasi", s_partisipasi)}</td></tr>
-                        <tr><td>Waktu</td><td style='text-align:center; font-weight:bold'>{s_waktu:.2f}</td><td>{get_narrative_simple("Waktu", s_waktu)}</td></tr>
-                    </tbody>
-                </table>
-                """
-                st.markdown(table_html, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+            neg_keywords = ['kurang', 'jarang', 'terlambat', 'tidak', 'kendala', 'hambatan', 'perlu']
+            
+            for c in unique_comments:
+                if any(k in c.lower() for k in neg_keywords):
+                    priority_comments.append(c)
+                else:
+                    normal_comments.append(c)
+            
+            summary_body = ""
+            
+            # Strategi Penyusunan Paragraf
+            selected_points = []
+            if priority_comments:
+                selected_points.extend(priority_comments[:2]) # Ambil max 2 masalah utama
+            if len(selected_points) < 3 and normal_comments:
+                 selected_points.extend(normal_comments[:2]) # Ambil sisa dari komentar biasa
+            
+            if selected_points:
+                summary_body = " Evaluator menyoroti beberapa poin penting, antara lain: " + " ".join(selected_points)
+            else:
+                summary_body = " Tidak ada catatan spesifik dari evaluator untuk periode ini."
 
-        except Exception as e:
-            st.error(f"Error baca Excel: {e}")
-    else:
-        st.info("Upload Excel untuk melihat nilai Anggota.")
+            # 4. Outro
+            if tone == "positif": outro = " Diharapkan prestasi ini dapat dipertahankan dan menjadi motivasi bagi anggota lainnya."
+            elif tone == "netral": outro = " Diharapkan ke depannya dapat lebih proaktif dan meningkatkan konsistensi kinerja."
+            else: outro = " Disarankan untuk segera melakukan sesi konseling kinerja (one-on-one) untuk merumuskan rencana perbaikan."
 
+            return intro + summary_body + outro
 
-# =================================================================================================
-# TAB 2: LEADER EVALUATION (VOICE TO POINTS -> REPORT)
-# =================================================================================================
-with tab_leader:
-    st.markdown("### 🎙️ Evaluasi Ketua & Wakil Divisi (Mode Diskusi)")
-    st.write("Diskusikan kinerja Ketua/Wakil. Rekam suara Anda, AI akan mengubahnya menjadi **Poin Catatan**, lalu membuat laporan lengkap.")
+        # --- FUNGSI PER DETAIL (ROW TABLE) ---
+        def generate_detail_narrative(keyword):
+            comments = raw_data[keyword]["comments"]
+            if not comments: return "Tidak ada catatan spesifik."
+            
+            clean = []
+            seen = set()
+            for c in comments:
+                c = re.sub(r'^[\d\-\.\)\•\"]+\s*', '', str(c)).replace('"', '').strip()
+                if c.lower() not in seen and len(c) > 3:
+                    seen.add(c.lower())
+                    if c: clean.append(c[0].upper() + c[1:] + ("." if c[-1] not in ['.','!','?'] else ""))
+            
+            return " ".join(clean)
 
-    col_input, col_result = st.columns([1, 1.5])
+        def fmt_num(val):
+            return f"{val:.2f}".rstrip('0').rstrip('.')
 
-    # --- STATE MANAGEMENT ---
-    if 'text_discussion_val' not in st.session_state:
-        st.session_state['text_discussion_val'] = ""
+        # --- 4. LAYOUT ---
+        st.markdown(f"<h2 style='margin-bottom:20px; color:#111827;'>Laporan Individu: <span style='color:#7c3aed; font-weight:800;'>{selected_member}</span></h2>", unsafe_allow_html=True)
 
-    with col_input:
+        # --- SECTION: EXECUTIVE SUMMARY (RANGKUMAN KESELURUHAN) ---
+        exec_sum_text = generate_overall_summary(final_total, raw_data)
+        
+        st.markdown(f"""
+        <div class="exec-summary">
+            <div class="exec-title">
+                <span>📋 Catatan Evaluator Keseluruhan</span>
+            </div>
+            <div class="exec-text">
+                {exec_sum_text}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_main, col_side = st.columns([1.8, 1])
+
+        # KANAN: GRAFIK
+        with col_side:
+            st.markdown('<div class="css-card">', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="score-container">
+                <div class="score-val">{fmt_num(final_total)}</div>
+                <div class="score-label">Total Performance Score</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            cats = ['Kinerja', 'Inisiatif', 'Kolaborasi', 'Partisipasi', 'Waktu']
+            vals = [s_kinerja, s_inisiatif, s_kolab, s_partisipasi, s_waktu]
+            fig = go.Figure()
+            fig.add_trace(go.Scatterpolar(r=vals, theta=cats, fill='toself', name=selected_member, line_color='#7c3aed', fillcolor='rgba(124, 58, 237, 0.2)'))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), margin=dict(t=10, b=10, l=30, r=30), height=280, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # KIRI: TABEL DETAIL
+        with col_main:
+            st.markdown('<div class="css-card">', unsafe_allow_html=True)
+            st.markdown("<div class='sec-title'>📝 Rincian Evaluasi per Komponen</div>", unsafe_allow_html=True)
+            
+            html_table = f"""
+            <table class="styled-table">
+                <thead>
+                    <tr>
+                        <th class="col-komponen">Komponen</th>
+                        <th class="col-bobot">Bobot</th>
+                        <th class="col-skor">Skor</th>
+                        <th class="col-catatan">Catatan Evaluator</th>
+                        <th class="col-sumber">Sumber</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="col-komponen">Kinerja & Deliverables</td>
+                        <td class="col-bobot">30%</td>
+                        <td class="col-skor">{fmt_num(s_kinerja)}</td>
+                        <td class="col-catatan">{generate_detail_narrative("Kinerja")}</td>
+                        <td class="col-sumber">Spreadsheet, Notion</td>
+                    </tr>
+                    <tr>
+                        <td class="col-komponen">Inisiatif</td>
+                        <td class="col-bobot">15%</td>
+                        <td class="col-skor">{fmt_num(s_inisiatif)}</td>
+                        <td class="col-catatan">{generate_detail_narrative("Inisiatif")}</td>
+                        <td class="col-sumber">Spreadsheet, Notion</td>
+                    </tr>
+                    <tr>
+                        <td class="col-komponen">Kolaborasi & Komunikasi</td>
+                        <td class="col-bobot">20%</td>
+                        <td class="col-skor">{fmt_num(s_kolab)}</td>
+                        <td class="col-catatan">{generate_detail_narrative("Kolaborasi")}</td>
+                        <td class="col-sumber">Spreadsheet, Notion</td>
+                    </tr>
+                    <tr>
+                        <td class="col-komponen">Partisipasi & Kehadiran</td>
+                        <td class="col-bobot">20%</td>
+                        <td class="col-skor">{fmt_num(s_partisipasi)}</td>
+                        <td class="col-catatan">{generate_detail_narrative("Partisipasi")}</td>
+                        <td class="col-sumber">Spreadsheet, Notion</td>
+                    </tr>
+                    <tr>
+                        <td class="col-komponen">Ketepatan Waktu</td>
+                        <td class="col-bobot">15%</td>
+                        <td class="col-skor">{fmt_num(s_waktu)}</td>
+                        <td class="col-catatan">{generate_detail_narrative("Waktu")}</td>
+                        <td class="col-sumber">Spreadsheet, Notion</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td>TOTAL AKHIR</td>
+                        <td style="text-align:center;">100%</td>
+                        <td class="col-skor">{fmt_num(final_total)}</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+            """
+            st.markdown(html_table, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # FOOTER
         st.markdown('<div class="css-card">', unsafe_allow_html=True)
-        st.subheader("1. Input Diskusi")
-        
-        target_role = st.selectbox("Siapa yang dinilai?", ["Ketua Divisi", "Wakil Ketua Divisi"])
-        target_name = st.text_input("Nama Lengkap:", placeholder="Contoh: Budi Santoso")
-
-        st.markdown("---")
-        st.write("**📝 Rekam Suara (Diskusi Gabungan):**")
-        
-        # 1. AUDIO RECORDER
-        audio_data = mic_recorder(start_prompt="🎤 Mulai Rekam", stop_prompt="⏹️ Selesai & Transkrip", key="rec_disc", format="webm")
-        
-        # 2. TRANSKRIPSI OTOMATIS
-        if audio_data:
-            with st.spinner("🤖 Mendengarkan & Meringkas poin-poin..."):
-                prompt_transcribe = """
-                Dengarkan audio ini. Tuliskan poin-poin penting evaluasi kinerja (Kelebihan & Kekurangan) dalam Bahasa Indonesia.
-                Langsung ke poin intinya.
-                """
-                # Gunakan fungsi safe
-                points_result = generate_content_safe(prompt_transcribe, audio_bytes=audio_data['bytes'])
-                
-                # Simpan ke Session State
-                st.session_state['text_discussion_val'] = points_result
-                st.success("✅ Selesai!")
-
-        # 3. TEXT AREA
-        text_discussion = st.text_area(
-            "Catatan Poin Diskusi (Otomatis terisi dari suara atau ketik manual):", 
-            value=st.session_state['text_discussion_val'],
-            height=250, 
-            placeholder="Jika rekaman gagal, silakan ketik hasil diskusi di sini..."
-        )
-        
-        if text_discussion != st.session_state['text_discussion_val']:
-             st.session_state['text_discussion_val'] = text_discussion
-
-        analyze_btn = st.button("🚀 Proses Analisis Laporan", type="primary")
+        st.markdown("<h4 style='text-align:center; color:#4b5563; font-size:0.9rem; margin-bottom:30px; letter-spacing:1px;'>LEMBAR PENGESAHAN</h4>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([1,1,1])
+        with c1:
+            st.markdown("<div class='ttd-box'><div class='ttd-role'>Ketua SGA</div><div class='ttd-name'>Sayyid Abdul Aziz Haidar</div></div>", unsafe_allow_html=True)
+        with c3:
+            st.markdown("<div class='ttd-box'><div class='ttd-role'>Ketua IOD</div><div class='ttd-name'>Ratu Bilqis</div></div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col_result:
-        if analyze_btn and api_key and target_name and text_discussion:
-            with st.spinner("🤖 AI sedang memilah per kategori dan merangkai cerita akhir..."):
-                try:
-                    # PROMPT
-                    prompt_ai = f"""
-                    Kamu adalah Senior HR Evaluator. Analisis catatan diskusi tentang {target_name} ({target_role}).
+    except Exception as e:
+        st.error("Terjadi kesalahan teknis saat membaca file.")
+        st.write(f"Detail Error: {e}")
 
-                    INPUT: "{text_discussion}"
-
-                    TUGAS:
-                    1. **PER POINT**: Skor (0-100) & Narasi Detail (2-3 kalimat) untuk 5 aspek (Kinerja, Inisiatif, Kolaborasi, Partisipasi, Waktu).
-                    2. **FINAL SYNTHESIS**: Gabungkan semua poin menjadi SATU NARASI PANJANG (200 kata), mengalir, profesional, ada kesimpulan tegas.
-
-                    FORMAT OUTPUT (JSON ONLY):
-                    {{
-                        "scores": {{ "Kinerja": 0, "Inisiatif": 0, "Kolaborasi": 0, "Partisipasi": 0, "Waktu": 0 }},
-                        "details": {{ "Kinerja": "...", "Inisiatif": "...", "Kolaborasi": "...", "Partisipasi": "...", "Waktu": "..." }},
-                        "final_synthesis": "...",
-                        "action_plan": "..."
-                    }}
-                    """
-
-                    # Panggil AI (Pakai fungsi safe fallback)
-                    json_raw = generate_content_safe(prompt_ai)
-                    
-                    # Bersihkan JSON
-                    json_str = json_raw.replace("```json", "").replace("```", "").strip()
-                    data_ai = json.loads(json_str)
-
-                    # --- HASIL ---
-                    scores = data_ai['scores']
-                    final_score = (scores['Kinerja']*0.3) + (scores['Inisiatif']*0.15) + (scores['Kolaborasi']*0.2) + (scores['Partisipasi']*0.2) + (scores['Waktu']*0.15)
-
-                    st.markdown(f"### 📊 Laporan Evaluasi: {target_name}")
-                    
-                    # 1. SCORE CARD
-                    c_res1, c_res2 = st.columns([1, 2])
-                    with c_res1:
-                         st.markdown(f'<div class="score-container"><div class="score-val">{final_score:.1f}</div><div class="score-label">Final Score</div></div>', unsafe_allow_html=True)
-                    with c_res2:
-                        cats = list(scores.keys())
-                        vals = list(scores.values())
-                        fig = go.Figure(data=go.Scatterpolar(r=vals, theta=cats, fill='toself', line_color='#7c3aed'))
-                        fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), height=200, margin=dict(t=20, b=20, l=20, r=20))
-                        st.plotly_chart(fig, use_container_width=True)
-
-                    # 2. TABEL RINCIAN
-                    st.markdown("<div class='sec-title'>1. Rincian Evaluasi Per Kategori</div>", unsafe_allow_html=True)
-                    details = data_ai['details']
-                    rows = ""
-                    for cat, narrative in details.items():
-                        score = scores[cat]
-                        color = "#16a34a" if score >= 80 else "#ca8a04" if score >= 70 else "#dc2626"
-                        rows += f"<tr><td><b>{cat}</b></td><td style='text-align:center; font-weight:bold; color:{color}'>{score}</td><td class='col-catatan'>{narrative}</td></tr>"
-
-                    st.markdown(f"""
-                    <table class="styled-table">
-                        <thead><tr><th>Kategori</th><th style='text-align:center'>Skor</th><th>Evaluasi Detail</th></tr></thead>
-                        <tbody>{rows}</tbody>
-                    </table>
-                    """, unsafe_allow_html=True)
-
-                    # 3. FINAL SYNTHESIS
-                    st.markdown("<div class='sec-title'>2. Kesimpulan Akhir (Sintesis)</div>", unsafe_allow_html=True)
-                    st.markdown(f"""
-                    <div class="narrative-box">
-                        <div class="narrative-title">📋 Analisis Menyeluruh</div>
-                        <div class="narrative-text">{data_ai['final_synthesis']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.success(f"💡 **Rekomendasi Tindakan:** {data_ai['action_plan']}")
-
-                except Exception as e:
-                    st.error(f"Gagal memproses Laporan: {e}")
-                    st.write("Tips: Jika error JSON, coba klik 'Proses Analisis' sekali lagi.")
-        
-        elif analyze_btn and not text_discussion:
-            st.warning("Mohon isi catatan diskusi terlebih dahulu.")
+else:
+    st.markdown("""<div style="text-align:center; padding:60px; background:white; border-radius:16px; border:2px dashed #d1d5db; color:#6b7280; margin-top:20px;"><h3>👋 Selamat Datang</h3><p>Silakan upload file Excel <b>QPR II</b> untuk memulai.</p></div>""", unsafe_allow_html=True)
