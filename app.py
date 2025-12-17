@@ -96,7 +96,7 @@ with st.sidebar:
     st.header("🧠 Pengaturan AI")
     api_key = st.text_input(
         "Google Gemini API Key:", 
-        value="AIzaSyD2uwPdGO2Y8bfd64cbWiNiffJ_2Imy9kc", 
+        value="AIzaSyD2uwPdGO2Y8bfd64cbWiNiffJ_2Imy9kC", 
         type="password"
     )
     
